@@ -7,10 +7,7 @@
 # =============================================================
 
 param(
-    [switch]$ApiOnly,
-    [switch]$UiOnly,
-    [int]$ApiPort = 8000,
-    [int]$UiPort  = 8501
+    [int]$ApiPort = 8000
 )
 
 $ErrorActionPreference = "Stop"
@@ -94,18 +91,8 @@ if (Test-Path $dbPath) {
 
 Say "Launching"
 
-if (-not $UiOnly) {
-    Start-Process -FilePath $py `
-        -ArgumentList "-m", "uvicorn", "api:app", "--host", "127.0.0.1", "--port", "$ApiPort" `
-        -WorkingDirectory $root
-    Good "FastAPI   http://127.0.0.1:$ApiPort/docs"
-}
-
-if (-not $ApiOnly) {
-    Good "Streamlit http://localhost:$UiPort"
-    Write-Host "`n  Press Ctrl+C to stop.`n" -ForegroundColor Yellow
-    & $py -m streamlit run (Join-Path $root "app.py") --server.port $UiPort
-} else {
-    Write-Host "`n  API running. Press Ctrl+C to stop.`n" -ForegroundColor Yellow
-    while ($true) { Start-Sleep -Seconds 3600 }
-}
+Start-Process -FilePath $py `
+    -ArgumentList "-m", "uvicorn", "api:app", "--host", "127.0.0.1", "--port", "$ApiPort" `
+    -WorkingDirectory $root
+Good "FastAPI   http://127.0.0.1:$ApiPort/docs"
+Write-Host "`n  API running. Close terminal to stop.`n" -ForegroundColor Yellow

@@ -35,10 +35,47 @@ logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 app = FastAPI(
-    title="Evidence AI",
-    description="Offline-runtime multimodal RAG over documents, images and audio.",
+    title="DocLink",
+    description="Multimodal RAG over documents, images and audio with provenance.",
     version="1.0.0",
 )
+
+import firebase_admin
+from firebase_admin import credentials, auth
+from rag_pipeline import current_user_id
+from fastapi import Request
+from fastapi.responses import JSONResponse
+
+# Initialize Firebase Admin using the provided service account
+try:
+    cred = credentials.Certificate("snehsaathi-hackathon-firebase-adminsdk-fbsvc-5bd6ae4384.json")
+    firebase_admin.initialize_app(cred)
+except ValueError:
+    pass  # Already initialized
+
+@app.middleware("http")
+async def firebase_auth_middleware(request: Request, call_next):
+    if request.method == "OPTIONS":
+        return await call_next(request)
+        
+    # Allow local frontend to load index.html without auth? Wait, it's an API, so no HTML.
+    # Allow docs and file serving (so img/audio tags work without fetch rewriting)
+    if request.url.path in ["/docs", "/openapi.json"] or request.url.path.endswith("/file"):
+        return await call_next(request)
+        
+    auth_header = request.headers.get("Authorization")
+    if not auth_header or not auth_header.startswith("Bearer "):
+        return JSONResponse(status_code=401, content={"detail": "Missing or invalid Authorization header"})
+        
+    try:
+        token = auth_header.split(" ")[1]
+        decoded = auth.verify_id_token(token)
+        # Isolate the data per user
+        current_user_id.set(decoded["uid"])
+    except Exception as e:
+        return JSONResponse(status_code=401, content={"detail": f"Token verification failed: {str(e)}"})
+        
+    return await call_next(request)
 
 app.add_middleware(
     CORSMiddleware,

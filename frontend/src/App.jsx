@@ -6,7 +6,24 @@ import {
   Home, PanelLeftClose, PanelLeft, User, Moon, Sun
 } from 'lucide-react';
 
+import { LogOut } from 'lucide-react';
+import { auth, login, logout } from './firebase';
+import { onAuthStateChanged } from 'firebase/auth';
+import GlowCursor from './GlowCursor';
+
 const API = 'http://127.0.0.1:8000';
+
+// Ponytail trick: intercept fetch to attach token without rewriting 50 lines of React
+let currentToken = null;
+const originalFetch = window.fetch;
+window.fetch = async (...args) => {
+  if (typeof args[0] === 'string' && args[0].startsWith(API) && currentToken) {
+    args[1] = args[1] || {};
+    args[1].headers = args[1].headers || {};
+    args[1].headers['Authorization'] = `Bearer ${currentToken}`;
+  }
+  return originalFetch(...args);
+};
 
 /* ── helpers ─────────────────────────────────────────────── */
 
@@ -62,6 +79,63 @@ function LogoWide({ height = 24 }) {
 /* ── App ─────────────────────────────────────────────────── */
 
 export default function App() {
+  const [user, setUser] = useState(null);
+  const [authChecking, setAuthChecking] = useState(true);
+  const [theme, setTheme] = useState(() => localStorage.getItem('dl_theme') || 'dark');
+
+  useEffect(() => {
+    document.documentElement.setAttribute('data-theme', theme);
+    localStorage.setItem('dl_theme', theme);
+  }, [theme]);
+
+  useEffect(() => {
+    return onAuthStateChanged(auth, async (u) => {
+      setUser(u);
+      if (u) {
+        currentToken = await u.getIdToken();
+      } else {
+        currentToken = null;
+      }
+      setAuthChecking(false);
+    });
+  }, []);
+
+  if (authChecking) return <div className="shell center">Loading...</div>;
+
+  if (!user) {
+    window.location.href = '/landing.html';
+    return null;
+  }
+
+  return (
+    <div style={{ position: 'relative', width: '100%', height: '100vh' }}>
+      <GlowCursor
+        color="#67E8F9"
+        secondaryColor="#A78BFA"
+        trailLength={40}
+        trailWidth={8}
+        trailTaper={0.8}
+        followSpeed={0.16}
+        glowIntensity={1.9}
+        glowSpread={1.2}
+        hotspot={0.65}
+        brightness={1.25}
+        opacity={1}
+        pulseSpeed={1.1}
+        noiseStrength={0.035}
+        idleFade
+        idleTimeout={700}
+        fadeDuration={900}
+        maxDevicePixelRatio={1} /* Reduced for performance optimization */
+        blendMode={theme === 'light' ? 'normal' : 'screen'}
+      >
+        <MainApp user={user} theme={theme} setTheme={setTheme} />
+      </GlowCursor>
+    </div>
+  );
+}
+
+function MainApp({ user, theme, setTheme }) {
   const [page, setPage] = useState('chat');
   const [sessions, setSessions] = useState(() => {
     try { return JSON.parse(localStorage.getItem('dl_sessions') || '[]'); } catch { return []; }
@@ -76,16 +150,9 @@ export default function App() {
   const [backend, setBackend] = useState('online');
   const [topK, setTopK] = useState(10);
   const [rerankK, setRerankK] = useState(5);
-  const [theme, setTheme] = useState(() => localStorage.getItem('dl_theme') || 'light');
-
   useEffect(() => { localStorage.setItem('dl_sessions', JSON.stringify(sessions)); }, [sessions]);
   useEffect(() => { if (activeId) localStorage.setItem('dl_active', activeId); }, [activeId]);
   
-  useEffect(() => {
-    localStorage.setItem('dl_theme', theme);
-    document.documentElement.setAttribute('data-theme', theme);
-  }, [theme]);
-
   const active = sessions.find(s => s.id === activeId);
   const msgs = active?.messages || [];
 
@@ -171,9 +238,12 @@ export default function App() {
         <div style={{ flex: 1 }}/>
         <div className="sb-footer">
           <div className="sb-user">
-            <div className="sb-avatar">AS</div>
-            <span className="sb-user-name">Aditya Singh</span>
+            <img src={user.photoURL} alt="Avatar" className="sb-avatar" style={{ padding: 0, overflow: 'hidden' }} />
+            <span className="sb-user-name" title={user.email}>{user.displayName || 'User'}</span>
           </div>
+          <button className="sb-theme-toggle" onClick={logout} title="Sign Out" style={{ marginRight: 8 }}>
+            <LogOut size={15}/>
+          </button>
           <button className="sb-theme-toggle" onClick={() => setTheme(t => t === 'light' ? 'dark' : 'light')} title="Toggle theme">
             {theme === 'light' ? <Moon size={15}/> : <Sun size={15}/>}
           </button>

@@ -489,12 +489,19 @@ class RAGPipeline:
         }
 
 
-_pipeline: RAGPipeline | None = None
+import contextvars
+current_user_id = contextvars.ContextVar("current_user_id", default="default")
+_pipelines: dict[str, RAGPipeline] = {}
 
 
 def get_pipeline() -> RAGPipeline:
-    """Process-wide singleton so models and the index load only once."""
-    global _pipeline
-    if _pipeline is None:
-        _pipeline = RAGPipeline()
-    return _pipeline
+    """Process-wide singleton per user so models and index load only once per user."""
+    global _pipelines
+    uid = current_user_id.get()
+    if uid not in _pipelines:
+        from vector_store import VectorStore
+        db_path = settings.index_dir / f"store_{uid}.db"
+        faiss_path = settings.index_dir / f"faiss_{uid}.index"
+        store = VectorStore(index_path=faiss_path, db_path=db_path)
+        _pipelines[uid] = RAGPipeline(store=store)
+    return _pipelines[uid]

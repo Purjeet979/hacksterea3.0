@@ -76,13 +76,13 @@ if (-not (Get-Command ollama -ErrorAction SilentlyContinue)) {
 Good (ollama --version)
 
 $models = (ollama list | Out-String)
-if ($models -match "qwen2.5vl:3b") {
-    Good "qwen2.5vl:3b already pulled"
-} else {
-    Write-Host "  Pulling qwen2.5vl:3b (~3.2 GB, one time)..."
-    ollama pull qwen2.5vl:3b
-    if ($LASTEXITCODE -eq 0) { Good "qwen2.5vl:3b pulled" } else { Bad "pull failed"; exit 1 }
-}
+# if ($models -match "qwen2.5vl:3b") {
+#     Good "qwen2.5vl:3b already pulled"
+# } else {
+#     Write-Host "  Pulling qwen2.5vl:3b (~3.2 GB, one time)..."
+#     ollama pull qwen2.5vl:3b
+#     if ($LASTEXITCODE -eq 0) { Good "qwen2.5vl:3b pulled" } else { Bad "pull failed"; exit 1 }
+# }
 
 Say "Downloading local models (MiniLM, CrossEncoder, Whisper)"
 & $py (Join-Path $root "scripts\prepare_models.py")
