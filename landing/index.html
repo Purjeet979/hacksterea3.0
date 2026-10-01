@@ -1,0 +1,319 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>DocLink — Document Intelligence with Provenance</title>
+<meta name="description" content="DocLink extracts claims with provenance, detects contradictions across document versions, and says 'insufficient evidence' instead of fabricating answers.">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Instrument+Serif:ital@0;1&display=swap" rel="stylesheet">
+<style>
+*, *::before, *::after { margin: 0; padding: 0; box-sizing: border-box; }
+
+:root {
+  --fg: #1a1a1a;
+  --fg-secondary: #5c5c5c;
+  --bg: #fafaf8;
+  --bg-alt: #f0efec;
+  --accent: #b8860b;
+  --accent-muted: rgba(184, 134, 11, 0.12);
+  --rule: #d6d4cf;
+  --mono: "SF Mono", "Cascadia Code", "Fira Code", "Consolas", monospace;
+  --serif: "Instrument Serif", Georgia, "Times New Roman", serif;
+  --sans: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+}
+
+html { font-size: 18px; scroll-behavior: smooth; }
+body { font-family: var(--sans); color: var(--fg); background: var(--bg); line-height: 1.6; -webkit-font-smoothing: antialiased; }
+
+.container { max-width: 920px; margin: 0 auto; padding: 0 32px; }
+
+/* ── NAV ── */
+nav { position: fixed; top: 0; left: 0; right: 0; z-index: 100; background: rgba(250, 250, 248, 0.92); backdrop-filter: blur(6px); border-bottom: 1px solid var(--rule); }
+nav .container { display: flex; align-items: center; justify-content: space-between; height: 56px; }
+nav .nav-logo { height: 32px; width: auto; }
+nav a { font-size: 0.8rem; color: var(--fg-secondary); text-decoration: none; letter-spacing: 0.04em; text-transform: uppercase; transition: color 180ms; }
+nav a:hover { color: var(--fg); }
+
+/* ── REVEAL ANIMATION ── */
+.reveal { opacity: 0; transform: translateY(28px); transition: opacity 260ms ease-out, transform 260ms ease-out; }
+.reveal.visible { opacity: 1; transform: translateY(0); }
+
+/* ── HERO ── */
+.hero { padding: 160px 0 100px; }
+.hero-eyebrow { font-size: 0.72rem; letter-spacing: 0.12em; text-transform: uppercase; color: var(--accent); margin-bottom: 20px; }
+.hero h1 { font-family: var(--serif); font-size: clamp(2.6rem, 6vw, 4rem); line-height: 1.08; letter-spacing: -0.025em; font-weight: 400; margin-bottom: 28px; max-width: 780px; }
+.hero h1 em { font-style: italic; color: var(--accent); }
+.hero-sub { font-size: 1.05rem; color: var(--fg-secondary); line-height: 1.65; max-width: 560px; margin-bottom: 44px; }
+.hero-cta { display: inline-block; font-size: 0.82rem; letter-spacing: 0.06em; text-transform: uppercase; padding: 14px 32px; background: var(--fg); color: var(--bg); text-decoration: none; transition: background 200ms; }
+.hero-cta:hover { background: #333; }
+
+/* ── SCREENSHOT MOCKUP ── */
+.screenshot-frame { margin: 80px 0 0; background: var(--bg-alt); border: 1px solid var(--rule); padding: 20px; }
+.screenshot-frame .mock-bar { display: flex; gap: 6px; margin-bottom: 16px; }
+.screenshot-frame .mock-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--rule); }
+.screenshot-inner { background: #fff; border: 1px solid var(--rule); padding: 28px 32px; font-size: 0.82rem; line-height: 1.7; }
+.claim-row { display: flex; gap: 16px; align-items: flex-start; padding: 14px 0; border-bottom: 1px solid var(--rule); }
+.claim-row:last-child { border-bottom: none; }
+.claim-badge { font-family: var(--mono); font-size: 0.65rem; padding: 3px 8px; letter-spacing: 0.05em; text-transform: uppercase; white-space: nowrap; flex-shrink: 0; margin-top: 2px; }
+.badge-verified { background: rgba(46, 125, 50, 0.1); color: #2e7d32; }
+.badge-superseded { background: var(--accent-muted); color: var(--accent); }
+.claim-text { color: var(--fg); }
+.claim-source { display: block; font-size: 0.72rem; color: var(--fg-secondary); margin-top: 4px; font-family: var(--mono); }
+
+/* ── SECTION DIVIDER ── */
+.section-rule { border: none; border-top: 1px solid var(--rule); margin: 0; }
+
+/* ── CAPABILITY SECTIONS ── */
+.capability { padding: 120px 0; }
+.cap-eyebrow { font-size: 0.68rem; letter-spacing: 0.14em; text-transform: uppercase; color: var(--accent); margin-bottom: 14px; }
+.cap-heading { font-family: var(--serif); font-size: clamp(1.8rem, 4vw, 2.6rem); line-height: 1.12; letter-spacing: -0.02em; font-weight: 400; margin-bottom: 24px; max-width: 640px; }
+.cap-body { font-size: 0.95rem; color: var(--fg-secondary); line-height: 1.7; max-width: 540px; margin-bottom: 40px; }
+
+/* ── CONTRADICTION MOCKUP ── */
+.contradiction-table { width: 100%; border-collapse: collapse; font-size: 0.82rem; }
+.contradiction-table th { text-align: left; font-family: var(--mono); font-size: 0.68rem; letter-spacing: 0.08em; text-transform: uppercase; color: var(--fg-secondary); padding: 10px 16px; border-bottom: 2px solid var(--fg); }
+.contradiction-table td { padding: 14px 16px; border-bottom: 1px solid var(--rule); vertical-align: top; }
+.contradiction-table tr:last-child td { border-bottom: none; }
+.td-status { font-family: var(--mono); font-size: 0.72rem; }
+.status-current { color: #2e7d32; }
+.status-superseded { color: var(--accent); text-decoration: line-through; }
+.td-source { font-family: var(--mono); font-size: 0.72rem; color: var(--fg-secondary); }
+
+/* ── JSON RESPONSE MOCKUP ── */
+.json-block { background: #1a1a1a; color: #c8c6c0; padding: 28px 32px; font-family: var(--mono); font-size: 0.76rem; line-height: 1.9; overflow-x: auto; white-space: pre; }
+.json-key { color: #c8c6c0; }
+.json-str { color: var(--accent); }
+.json-bool { color: #e06c75; }
+.json-null { color: #6c7a89; }
+
+/* ── PIPELINE ── */
+.pipeline { display: flex; align-items: center; gap: 0; flex-wrap: wrap; justify-content: center; margin: 40px 0; }
+.pipeline-step { text-align: center; padding: 18px 24px; }
+.pipeline-label { font-family: var(--mono); font-size: 0.7rem; letter-spacing: 0.06em; text-transform: uppercase; color: var(--fg); margin-bottom: 6px; }
+.pipeline-desc { font-size: 0.72rem; color: var(--fg-secondary); max-width: 140px; margin: 0 auto; }
+.pipeline-arrow { font-size: 1.2rem; color: var(--rule); padding: 0 4px; line-height: 1; }
+
+/* ── CTA SECTION ── */
+.cta-section { padding: 120px 0 140px; text-align: center; }
+.cta-section h2 { font-family: var(--serif); font-size: clamp(2rem, 4vw, 2.8rem); line-height: 1.12; letter-spacing: -0.02em; font-weight: 400; margin-bottom: 18px; }
+.cta-section p { font-size: 0.95rem; color: var(--fg-secondary); margin-bottom: 36px; max-width: 420px; margin-left: auto; margin-right: auto; }
+.cta-section .hero-cta { background: var(--accent); color: #fff; }
+.cta-section .hero-cta:hover { background: #9a7209; }
+
+/* ── FOOTER ── */
+footer { border-top: 1px solid var(--rule); padding: 32px 0; }
+footer .container { display: flex; justify-content: space-between; align-items: center; font-size: 0.72rem; color: var(--fg-secondary); }
+footer img { height: 20px; opacity: 0.5; }
+
+/* ── RESPONSIVE ── */
+@media (max-width: 640px) {
+  html { font-size: 16px; }
+  .container { padding: 0 20px; }
+  .hero { padding: 120px 0 60px; }
+  .capability { padding: 80px 0; }
+  .pipeline { flex-direction: column; }
+  .pipeline-arrow { transform: rotate(90deg); }
+  .contradiction-table { font-size: 0.75rem; }
+  .contradiction-table th, .contradiction-table td { padding: 10px 8px; }
+  nav .container { padding: 0 16px; }
+}
+</style>
+</head>
+<body>
+
+<!-- NAV -->
+<nav>
+  <div class="container">
+    <img src="/logo-wide.png" alt="DocLink" class="nav-logo">
+    <a href="#start">Get Started</a>
+  </div>
+</nav>
+
+<!-- HERO -->
+<section class="hero">
+  <div class="container">
+    <div class="reveal">
+      <div class="hero-eyebrow">Document Intelligence</div>
+      <h1>Every answer traces back to <em>a claim in a document.</em></h1>
+      <p class="hero-sub">
+        DocLink extracts verifiable claims with page-level provenance, detects contradictions across document versions, and refuses to answer when evidence is insufficient.
+      </p>
+      <a href="#start" class="hero-cta">Try DocLink</a>
+    </div>
+
+    <div class="screenshot-frame reveal">
+      <div class="mock-bar"><div class="mock-dot"></div><div class="mock-dot"></div><div class="mock-dot"></div></div>
+      <div class="screenshot-inner">
+        <div class="claim-row">
+          <span class="claim-badge badge-verified">Verified</span>
+          <div>
+            <span class="claim-text">Classification accuracy reached 99.4% on the held-out evaluation set.</span>
+            <span class="claim-source">project_report.pdf · p.2 · §2024 Development Results</span>
+          </div>
+        </div>
+        <div class="claim-row">
+          <span class="claim-badge badge-verified">Verified</span>
+          <div>
+            <span class="claim-text">Budget utilisation for the 2024 financial year closed at 87% of the allocated amount.</span>
+            <span class="claim-source">project_report.pdf · p.3 · §Budget and Resourcing</span>
+          </div>
+        </div>
+        <div class="claim-row">
+          <span class="claim-badge badge-superseded">Superseded</span>
+          <div>
+            <span class="claim-text">Estimated project cost: ₹25,000 (initial draft estimate, April 2024).</span>
+            <span class="claim-source">vendor_quote_v1.pdf · p.1</span>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<hr class="section-rule">
+
+<!-- CONTRADICTION DETECTION -->
+<section class="capability">
+  <div class="container">
+    <div class="reveal">
+      <div class="cap-eyebrow">Contradiction Detection</div>
+      <h2 class="cap-heading">Three documents, three prices. DocLink resolves by version date.</h2>
+      <p class="cap-body">
+        When the same claim appears in multiple document versions with conflicting values, DocLink identifies the conflict, timestamps each version, and marks older claims as superseded. You see the full trail, not just the latest number.
+      </p>
+    </div>
+
+    <div class="screenshot-frame reveal">
+      <div class="mock-bar"><div class="mock-dot"></div><div class="mock-dot"></div><div class="mock-dot"></div></div>
+      <table class="contradiction-table">
+        <thead>
+          <tr><th>Claim</th><th>Source</th><th>Date</th><th>Status</th></tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td>Estimated project cost: ₹25,000</td>
+            <td class="td-source">vendor_quote_v1.pdf</td>
+            <td class="td-source">Apr 2024</td>
+            <td class="td-status status-superseded">Superseded</td>
+          </tr>
+          <tr>
+            <td>Revised estimate: ₹50,000 (scope change)</td>
+            <td class="td-source">vendor_quote_v2.pdf</td>
+            <td class="td-source">Jun 2024</td>
+            <td class="td-status status-superseded">Superseded</td>
+          </tr>
+          <tr>
+            <td>Final contracted amount: ₹75,000</td>
+            <td class="td-source">signed_contract.pdf</td>
+            <td class="td-source">Aug 2024</td>
+            <td class="td-status status-current">Current</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+</section>
+
+<hr class="section-rule">
+
+<!-- INSUFFICIENT EVIDENCE -->
+<section class="capability">
+  <div class="container">
+    <div class="reveal">
+      <div class="cap-eyebrow">Honest Restraint</div>
+      <h2 class="cap-heading">When evidence is insufficient, DocLink says so.</h2>
+      <p class="cap-body">
+        Most RAG systems fabricate plausible-sounding answers from thin context. DocLink measures retrieval confidence against an explicit threshold and abstains rather than hallucinate. This is the actual API response to a question with no supporting documents.
+      </p>
+    </div>
+
+    <div class="reveal">
+      <div class="json-block">{
+  <span class="json-key">"answer"</span>: <span class="json-str">"I could not find sufficient evidence in the available sources to answer this question."</span>,
+  <span class="json-key">"abstained"</span>: <span class="json-bool">true</span>,
+  <span class="json-key">"confidence"</span>: <span class="json-null">null</span>,
+  <span class="json-key">"error_code"</span>: <span class="json-str">"INSUFFICIENT_EVIDENCE"</span>,
+  <span class="json-key">"citations"</span>: [],
+  <span class="json-key">"retrieved_items"</span>: []
+}</div>
+    </div>
+  </div>
+</section>
+
+<hr class="section-rule">
+
+<!-- ARCHITECTURE -->
+<section class="capability">
+  <div class="container">
+    <div class="reveal">
+      <div class="cap-eyebrow">Architecture</div>
+      <h2 class="cap-heading">A linear pipeline with a gate before generation.</h2>
+      <p class="cap-body">
+        Every query passes through retrieval, cross-encoder reranking, and an explicit abstention gate before the language model is invoked. The LLM never sees a query that lacks evidence. Citations are programmatic, not generated.
+      </p>
+    </div>
+
+    <div class="pipeline reveal">
+      <div class="pipeline-step">
+        <div class="pipeline-label">Ingest</div>
+        <div class="pipeline-desc">PDF, DOCX, images, audio. Extract + chunk.</div>
+      </div>
+      <div class="pipeline-arrow">→</div>
+      <div class="pipeline-step">
+        <div class="pipeline-label">Embed</div>
+        <div class="pipeline-desc">384-d vectors. FAISS exact search.</div>
+      </div>
+      <div class="pipeline-arrow">→</div>
+      <div class="pipeline-step">
+        <div class="pipeline-label">Rerank</div>
+        <div class="pipeline-desc">Cross-encoder scoring. Top-K filter.</div>
+      </div>
+      <div class="pipeline-arrow">→</div>
+      <div class="pipeline-step">
+        <div class="pipeline-label" style="color: var(--accent);">Gate</div>
+        <div class="pipeline-desc">Abstain if score &lt; threshold. No hallucination.</div>
+      </div>
+      <div class="pipeline-arrow">→</div>
+      <div class="pipeline-step">
+        <div class="pipeline-label">Generate</div>
+        <div class="pipeline-desc">Grounded answer. Programmatic citations.</div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<hr class="section-rule">
+
+<!-- CTA -->
+<section class="cta-section" id="start">
+  <div class="container reveal">
+    <h2>Upload a document. Ask a question. See the evidence.</h2>
+    <p>DocLink runs locally or with any OpenAI-compatible API. No data leaves your machine unless you choose it.</p>
+    <a href="http://localhost:5173" class="hero-cta">Open DocLink</a>
+  </div>
+</section>
+
+<!-- FOOTER -->
+<footer>
+  <div class="container">
+    <img src="/logo-wide.png" alt="DocLink">
+    <span>© 2024 DocLink</span>
+  </div>
+</footer>
+
+<script>
+const observer = new IntersectionObserver((entries) => {
+  entries.forEach(entry => {
+    if (entry.isIntersecting) {
+      entry.target.classList.add('visible');
+      observer.unobserve(entry.target);
+    }
+  });
+}, { threshold: 0.12 });
+
+document.querySelectorAll('.reveal').forEach(el => observer.observe(el));
+</script>
+
+</body>
+</html>

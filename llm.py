@@ -28,18 +28,18 @@ from schemas import ErrorCode, Modality, RerankedResult
 
 logger = logging.getLogger(__name__)
 
-SYSTEM_RULES = """You are DocLink, a grounded question-answering system.
+SYSTEM_RULES = """You are Evidence AI, a grounded question-answering system.
 
 Rules you must follow without exception:
-1. Use ONLY the evidence provided below. You have no other knowledge.
-2. Never invent facts, figures, dates, or names that are not in the evidence.
+1. Use ONLY the evidence provided below and any attached image. You have no other knowledge.
+2. Never invent facts, figures, dates, or names that are not in the evidence or image.
 3. Never write citation markers such as [1] or (Source 2). Citations are
    attached automatically after you answer.
 4. Never invent page numbers, timestamps, or filenames.
 5. Copy every number, percentage, date, and proper noun EXACTLY as written in
    the evidence. Do not round, reformat, or add digits. If the evidence says
    "99.4 percent", write "99.4 percent" and never "99.44".
-6. If the evidence does not answer the question, say exactly:
+6. If the provided evidence and the attached image do not answer the question, say exactly:
    INSUFFICIENT_EVIDENCE
 7. If two pieces of evidence conflict, say so explicitly and describe both
    rather than silently picking one.
@@ -47,17 +47,17 @@ Rules you must follow without exception:
 9. Be concise: at most one short paragraph unless the question needs more.
 """
 
-DISCOVERY_RULES = """You are DocLink, a grounded evidence-discovery system.
+DISCOVERY_RULES = """You are Evidence AI, a grounded evidence-discovery system.
 
 The user is not asking a factual question. They are asking WHICH SOURCES in
 the collection relate to their material. The evidence below is the answer.
 
 Rules you must follow without exception:
-1. Summarise what each piece of evidence below contains and why it relates
+1. Summarise what each piece of evidence below and any attached image contains and why it relates
    to the user's material.
 2. Name the source files and say what kind of material each one is (report
    page, spreadsheet row, dashboard image, audio segment).
-3. Use ONLY the evidence below. Never invent sources or content.
+3. Use ONLY the evidence below and the attached image. Never invent sources or content.
 4. Copy numbers, percentages and dates EXACTLY as written. Never round or
    add digits.
 5. Never write citation markers such as [1]. Citations are attached
@@ -79,13 +79,15 @@ DISCOVERY_MARKERS = (
     "what was the document about", "what is the document about",
     "what is this document about", "what is this about", "what was this about",
     "what does the document say", "what does this say", "what is this",
-    "summarize", "summary", "overview", "explain the document",
+    "summarize", "summarise", "summary", "overview", "explain the document",
     "tell me about", "what is this file about", "what was this file about",
     "what is the pdf about", "what was the pdf about", "what does the pdf say",
-    "what is in the pdf", "about the pdf", "summarize the pdf", "explain the pdf",
+    "what is in the pdf", "about the pdf", "summarize the pdf", "summarise the pdf", "explain the pdf",
     "what is the docx about", "what was the docx about", "what does the docx say",
-    "what is in the docx", "about the docx", "summarize the docx", "explain the docx",
-    "the pdf", "the docx", "the doc",
+    "what is in the docx", "about the docx", "summarize the docx", "summarise the docx", "explain the docx",
+    "what is the image about", "what was the image about", "what does the image say",
+    "what is in the image", "about the image", "summarize the image", "summarise the image", "explain the image",
+    "the pdf", "the docx", "the doc", "the image", "the picture", "this image", "this picture"
 )
 
 

@@ -21,8 +21,11 @@ os.environ.setdefault("HF_HUB_DISABLE_SYMLINKS_WARNING", "1")
 
 from pydantic import Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
+from dotenv import load_dotenv
 
 PROJECT_ROOT = Path(__file__).resolve().parent
+
+load_dotenv(PROJECT_ROOT / ".env", override=True)
 
 
 def _bridge_streamlit_secrets() -> None:
@@ -97,8 +100,8 @@ class Settings(BaseSettings):
     torch_device: str = "cpu"
 
     # ---- Chunking -----------------------------------------------------
-    chunk_size: int = 800
-    chunk_overlap: int = 100
+    chunk_size: int = 1500
+    chunk_overlap: int = 200
     min_chunk_chars: int = 40
 
     # ---- Retrieval ----------------------------------------------------

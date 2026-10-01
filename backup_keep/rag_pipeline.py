@@ -26,7 +26,6 @@ import logging
 import shutil
 import threading
 import time
-import contextvars
 from pathlib import Path
 
 from config import settings
@@ -61,8 +60,6 @@ AUDIO_EXTENSIONS = {".wav", ".mp3", ".m4a", ".flac", ".ogg"}
 def _safe_name(filename: str) -> str:
     """Strip any directory component so an upload cannot traverse paths."""
     return Path(filename).name.replace("\\", "_").replace("/", "_")
-
-current_user_id = contextvars.ContextVar("current_user_id", default="default")
 
 
 # Technical error detail for the most recent query on this thread. Kept
@@ -492,18 +489,19 @@ class RAGPipeline:
         }
 
 
+import contextvars
+current_user_id = contextvars.ContextVar("current_user_id", default="default")
 _pipelines: dict[str, RAGPipeline] = {}
 
 
 def get_pipeline() -> RAGPipeline:
-    """Process-wide singleton per user so models and the index load only once."""
+    """Process-wide singleton per user so models and index load only once per user."""
+    global _pipelines
     uid = current_user_id.get()
     if uid not in _pipelines:
         from vector_store import VectorStore
-        # Inject per-user DB and index path
-        store = VectorStore(
-            db_path=Path(f"data/store_{uid}.db"),
-            index_path=Path(f"index/faiss_{uid}.index")
-        )
+        db_path = settings.index_dir / f"store_{uid}.db"
+        faiss_path = settings.index_dir / f"faiss_{uid}.index"
+        store = VectorStore(index_path=faiss_path, db_path=db_path)
         _pipelines[uid] = RAGPipeline(store=store)
     return _pipelines[uid]

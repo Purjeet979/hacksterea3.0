@@ -109,8 +109,47 @@ def run_ocr(pil_image) -> str:
 def describe_image(path: Path) -> str:
     """Concise visual description from the local vision model."""
     from llm import ollama_generate
+    try:
+        return ollama_generate(VISION_PROMPT, image_paths=[path]).strip()
+    except Exception as exc:
+        if settings.openai_api_key:
+            import base64, mimetypes, json, urllib.request, io
+            from PIL import Image
+            
+            # Resize image to max 1024x1024 to prevent Groq API connection drops
+            with Image.open(path) as img:
+                img.thumbnail((1024, 1024))
+                if img.mode != "RGB":
+                    img = img.convert("RGB")
+                buffer = io.BytesIO()
+                img.save(buffer, format="JPEG", quality=85)
+                encoded = base64.b64encode(buffer.getvalue()).decode("utf-8")
+                mime = "image/jpeg"
 
-    return ollama_generate(VISION_PROMPT, image_paths=[path]).strip()
+            payload = {
+                "model": "llama-3.2-11b-vision-preview",
+                "messages": [{
+                    "role": "user",
+                    "content": [
+                        {"type": "text", "text": VISION_PROMPT},
+                        {"type": "image_url", "image_url": {"url": f"data:{mime};base64,{encoded}"}}
+                    ]
+                }],
+                "max_tokens": 300,
+            }
+            req = urllib.request.Request(
+                f"{settings.online_base_url.rstrip('/')}/chat/completions",
+                data=json.dumps(payload).encode("utf-8"),
+                headers={
+                    "Content-Type": "application/json",
+                    "Authorization": f"Bearer {settings.openai_api_key}",
+                },
+                method="POST"
+            )
+            with urllib.request.urlopen(req, timeout=30) as resp:
+                data = json.loads(resp.read())
+                return data["choices"][0]["message"]["content"].strip()
+        raise exc
 
 
 def build_representation(description: str, ocr_text: str) -> str:
@@ -158,14 +197,8 @@ def process_image(path_str: str) -> IngestionResult:
 
         content = build_representation(description, ocr_text)
         if not content:
-            return IngestionResult(
-                source=source,
-                items=[],
-                success=False,
-                error="Image produced neither OCR text nor a visual description.",
-                error_code=ErrorCode.VISION_FAILED,
-                warnings=warnings,
-            )
+            warnings.append("Image produced neither OCR text nor a visual description.")
+            content = f"[Image file: {path.name}]"
 
         item = ContentItem(
             item_id=derive_id(source.source_id, "image", 0),

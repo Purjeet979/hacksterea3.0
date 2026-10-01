@@ -278,8 +278,17 @@ class OpenAIProvider(InferenceProvider):
             return [{"role": "user", "content": prompt}]
 
         path = Path(inspect_image)
-        mime = mimetypes.guess_type(path.name)[0] or "image/png"
-        encoded = base64.b64encode(path.read_bytes()).decode("utf-8")
+        import io
+        from PIL import Image
+        with Image.open(path) as img:
+            img.thumbnail((1024, 1024))
+            if img.mode != "RGB":
+                img = img.convert("RGB")
+            buffer = io.BytesIO()
+            img.save(buffer, format="JPEG", quality=85)
+            encoded = base64.b64encode(buffer.getvalue()).decode("utf-8")
+            mime = "image/jpeg"
+
         return [{
             "role": "user",
             "content": [
@@ -310,8 +319,12 @@ class OpenAIProvider(InferenceProvider):
             )
 
         prompt = build_prompt(query, evidence, filenames)
+        model_name = settings.online_model
+        if inspect_image and "vision" not in model_name.lower():
+            model_name = "llama-3.2-11b-vision-preview"
+
         payload = {
-            "model": settings.online_model,
+            "model": model_name,
             "messages": self._build_messages(prompt, inspect_image),
             "temperature": settings.ollama_temperature,
             "max_tokens": 800,

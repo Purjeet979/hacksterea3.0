@@ -1,17 +1,19 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
-import ReactMarkdown from 'react-markdown';
 import {
   FileText, Image as ImageIcon, Headphones, Plus, X, Send,
   ArrowUpRight, Settings as SettingsIcon, Paperclip, FileSpreadsheet,
   AlertCircle, ChevronRight, FolderOpen, MessageSquare, Trash2,
-  Home, PanelLeftClose, PanelLeft, User, Moon, Sun, Square, Mic, MicOff, LogOut
+  Home, PanelLeftClose, PanelLeft, User, Moon, Sun
 } from 'lucide-react';
-import { auth, logout } from './firebase';
+
+import { LogOut } from 'lucide-react';
+import { auth, login, logout } from './firebase';
 import { onAuthStateChanged } from 'firebase/auth';
 import GlowCursor from './GlowCursor';
 
 const API = 'http://127.0.0.1:8000';
 
+// Ponytail trick: intercept fetch to attach token without rewriting 50 lines of React
 let currentToken = null;
 const originalFetch = window.fetch;
 window.fetch = async (...args) => {
@@ -106,11 +108,25 @@ export default function App() {
   }
 
   return (
-    <div style={{ width: '100vw', height: '100vh', margin: 0, padding: 0, overflow: 'hidden' }}>
+    <div style={{ position: 'relative', width: '100%', height: '100vh' }}>
       <GlowCursor
-        color={theme === 'light' ? '#3b82f6' : '#60a5fa'}
-        size={250}
-        opacity={theme === 'light' ? 0.08 : 0.12}
+        color="#67E8F9"
+        secondaryColor="#A78BFA"
+        trailLength={40}
+        trailWidth={8}
+        trailTaper={0.8}
+        followSpeed={0.16}
+        glowIntensity={1.9}
+        glowSpread={1.2}
+        hotspot={0.65}
+        brightness={1.25}
+        opacity={1}
+        pulseSpeed={1.1}
+        noiseStrength={0.035}
+        idleFade
+        idleTimeout={700}
+        fadeDuration={900}
+        maxDevicePixelRatio={1} /* Reduced for performance optimization */
         blendMode={theme === 'light' ? 'normal' : 'screen'}
       >
         <MainApp user={user} theme={theme} setTheme={setTheme} />
@@ -134,10 +150,9 @@ function MainApp({ user, theme, setTheme }) {
   const [backend, setBackend] = useState('online');
   const [topK, setTopK] = useState(10);
   const [rerankK, setRerankK] = useState(5);
-
   useEffect(() => { localStorage.setItem('dl_sessions', JSON.stringify(sessions)); }, [sessions]);
   useEffect(() => { if (activeId) localStorage.setItem('dl_active', activeId); }, [activeId]);
-
+  
   const active = sessions.find(s => s.id === activeId);
   const msgs = active?.messages || [];
 
@@ -297,14 +312,8 @@ function ProgressRow({ type }) {
   
   return (
     <div className="prog-row">
-      <div className="prog-text">
-        <span>{msg}</span>
-        <div className="loading-row" style={{ marginLeft: '10px', marginTop: '2px' }}>
-          <div className="loading-dot" />
-          <div className="loading-dot" />
-          <div className="loading-dot" />
-        </div>
-      </div>
+      <div className="prog-text"><span>{msg}</span><span className="prog-perc">{Math.floor(p)}%</span></div>
+      <div className="prog-bar-bg"><div className="prog-bar-fill" style={{ width: p + '%' }}/></div>
     </div>
   );
 }
@@ -326,8 +335,6 @@ function ChatView({ msgs, setMsgs, sources, cite, setCite, backend, topK, rerank
   useEffect(() => { endRef.current?.scrollIntoView({ behavior: 'smooth' }); }, [msgs, loading]);
   useEffect(() => { const t = taRef.current; if (t) { t.style.height = 'auto'; t.style.height = Math.min(t.scrollHeight, 160) + 'px'; } }, [text]);
 
-  const [abortCtrl, setAbortCtrl] = useState(null);
-
   const send = async () => {
     const q = text.trim();
     if (!q && !files.length) return;
@@ -339,22 +346,14 @@ function ChatView({ msgs, setMsgs, sources, cite, setCite, backend, topK, rerank
     setLoading(true);
     setErr(null);
 
-    const ctrl = new AbortController();
-    setAbortCtrl(ctrl);
-
     if (files.length) {
       setIngesting(true);
       try {
         const fd = new FormData();
         files.forEach(f => fd.append('files', f));
-        await fetch(`${API}/ingest`, { method: 'POST', body: fd, signal: ctrl.signal });
+        await fetch(`${API}/ingest`, { method: 'POST', body: fd });
         await fetchSources();
-      } catch (e) {
-        if (e.name === 'AbortError') {
-          setMsgs(p => [...p, { role: 'ai', text: 'Generation paused.', abstained: true }]);
-          setLoading(false); setIngesting(false); setFiles([]); setAbortCtrl(null); return;
-        }
-      }
+      } catch {}
       setIngesting(false);
     }
 
@@ -363,23 +362,14 @@ function ChatView({ msgs, setMsgs, sources, cite, setCite, backend, topK, rerank
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ query: q || 'Summarize the uploaded files.', top_k: +topK, rerank_top_k: +rerankK, inference_mode: 'local', query_modality: 'text' }),
-        signal: ctrl.signal,
       });
       if (!res.ok) throw new Error('HTTP ' + res.status);
       const d = await res.json();
       setMsgs(p => [...p, { role: 'ai', text: d.answer, citations: d.citations || [], abstained: d.abstained, confidence: d.confidence }]);
     } catch (e) {
-      if (e.name === 'AbortError') {
-        setMsgs(p => [...p, { role: 'ai', text: 'Generation paused.', abstained: true }]);
-      } else {
-        setErr(e.message);
-        setMsgs(p => [...p, { role: 'ai', text: 'Something went wrong. Please try again.', error: true }]);
-      }
-    } finally { setLoading(false); setFiles([]); setAbortCtrl(null); }
-  };
-
-  const stop = () => {
-    if (abortCtrl) abortCtrl.abort();
+      setErr(e.message);
+      setMsgs(p => [...p, { role: 'ai', text: 'Something went wrong. Please try again.', error: true }]);
+    } finally { setLoading(false); setFiles([]); }
   };
 
   const keyDown = (e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); send(); } };
@@ -400,7 +390,7 @@ function ChatView({ msgs, setMsgs, sources, cite, setCite, backend, topK, rerank
             <h1 className="home-h1">Unlock insights from your <span className="highlight">documents.</span></h1>
 
             <div className="comp-wrap center">
-              <Comp text={text} setText={setText} files={files} addFiles={addFiles} rmFile={rmFile} send={send} stop={stop} keyDown={keyDown} loading={loading} taRef={taRef} fileRef={fileRef}/>
+              <Comp text={text} setText={setText} files={files} addFiles={addFiles} rmFile={rmFile} send={send} keyDown={keyDown} loading={loading} taRef={taRef} fileRef={fileRef}/>
             </div>
 
             <div className="home-suggestions">
@@ -430,7 +420,7 @@ function ChatView({ msgs, setMsgs, sources, cite, setCite, backend, topK, rerank
 
       {has && (
         <div className="comp-wrap">
-          <Comp text={text} setText={setText} files={files} addFiles={addFiles} rmFile={rmFile} send={send} stop={stop} keyDown={keyDown} loading={loading} taRef={taRef} fileRef={fileRef}/>
+          <Comp text={text} setText={setText} files={files} addFiles={addFiles} rmFile={rmFile} send={send} keyDown={keyDown} loading={loading} taRef={taRef} fileRef={fileRef}/>
         </div>
       )}
     </>
@@ -439,39 +429,7 @@ function ChatView({ msgs, setMsgs, sources, cite, setCite, backend, topK, rerank
 
 /* ── Composer ────────────────────────────────────────────── */
 
-function Comp({ text, setText, files, addFiles, rmFile, send, stop, keyDown, loading, taRef, fileRef }) {
-  const [listening, setListening] = useState(false);
-  const recognitionRef = useRef(null);
-
-  const toggleListen = () => {
-    if (listening) {
-      recognitionRef.current?.stop();
-      setListening(false);
-      return;
-    }
-    const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
-    if (!SpeechRecognition) {
-      alert("Speech recognition is not supported in this browser.");
-      return;
-    }
-    const recognition = new SpeechRecognition();
-    recognition.continuous = false;
-    recognition.interimResults = true;
-    recognition.onresult = (e) => {
-      let finalTranscript = '';
-      for (let i = e.resultIndex; i < e.results.length; ++i) {
-        if (e.results[i].isFinal) finalTranscript += e.results[i][0].transcript;
-      }
-      if (finalTranscript) {
-        setText(prev => (prev + ' ' + finalTranscript).trim());
-      }
-    };
-    recognition.onend = () => setListening(false);
-    recognition.start();
-    recognitionRef.current = recognition;
-    setListening(true);
-  };
-
+function Comp({ text, setText, files, addFiles, rmFile, send, keyDown, loading, taRef, fileRef }) {
   return (
     <div className="comp">
       {files.length > 0 && (
@@ -485,13 +443,8 @@ function Comp({ text, setText, files, addFiles, rmFile, send, stop, keyDown, loa
       <div className="comp-row">
         <input ref={fileRef} type="file" multiple onChange={addFiles} style={{ display: 'none' }} accept=".pdf,.doc,.docx,.txt,.csv,.png,.jpg,.jpeg,.webp,.bmp,.tiff,.tif,.wav,.mp3,.m4a,.flac,.ogg"/>
         <button className="comp-attach" onClick={() => fileRef.current?.click()} title="Attach files"><Paperclip size={17}/></button>
-        <button className="comp-attach" style={{ color: listening ? 'var(--red)' : 'inherit' }} onClick={toggleListen} title="Voice dictation">{listening ? <MicOff size={17}/> : <Mic size={17}/>}</button>
-        <textarea ref={taRef} className="comp-input" rows={1} placeholder={listening ? "Listening..." : "Ask anything about your documents…"} value={text} onChange={e => setText(e.target.value)} onKeyDown={keyDown}/>
-        {loading ? (
-          <button className="comp-send stop-btn" onClick={stop} title="Stop generation" style={{ backgroundColor: '#ff4444' }}><Square size={14} fill="currentColor"/></button>
-        ) : (
-          <button className="comp-send" onClick={send} disabled={!text.trim() && !files.length} title="Send"><Send size={15}/></button>
-        )}
+        <textarea ref={taRef} className="comp-input" rows={1} placeholder="Ask anything about your documents…" value={text} onChange={e => setText(e.target.value)} onKeyDown={keyDown}/>
+        <button className="comp-send" onClick={send} disabled={loading || (!text.trim() && !files.length)} title="Send"><Send size={15}/></button>
       </div>
     </div>
   );
@@ -519,8 +472,22 @@ function Msg({ m, onCite }) {
       ) : m.error ? (
         <div className="msg-ai-err"><AlertCircle size={14} style={{ flexShrink: 0, marginTop: 1 }}/>{m.text}</div>
       ) : (
-        <div className="msg-ai-body">
-          <ReactMarkdown>{m.text}</ReactMarkdown>
+        <div className="msg-ai-body">{m.text}</div>
+      )}
+      {m.citations?.length > 0 && (
+        <div className="cites">
+          <div className="cites-label">Sources</div>
+          <div className="cites-list">
+            {m.citations.map((c, i) => (
+              <div key={i} className="cite" onClick={() => onCite(c)}>
+                <div className="cite-n">{c.citation_id || i + 1}</div>
+                <span className="cite-name">{c.filename}</span>
+                {locLabel(c) && <span className="cite-loc">· {locLabel(c)}</span>}
+                {c.excerpt && <span className="cite-ex">— {c.excerpt}</span>}
+                <ChevronRight size={13} className="cite-arrow"/>
+              </div>
+            ))}
+          </div>
         </div>
       )}
     </div>
@@ -568,16 +535,6 @@ function SourcesPage({ sources, filter, setFilter, fetchSources }) {
     e.target.value = '';
   };
 
-  const handleDelete = async (sourceId) => {
-    if (!window.confirm("Are you sure you want to delete this source?")) return;
-    try {
-      await fetch(`${API}/source/${sourceId}`, { method: 'DELETE' });
-      await fetchSources();
-    } catch (e) {
-      console.error("Failed to delete source", e);
-    }
-  };
-
   const filtered = sources.filter(s => s.filename.toLowerCase().includes(filter.toLowerCase()));
 
   return (
@@ -610,7 +567,6 @@ function SourcesPage({ sources, filter, setFilter, fetchSources }) {
                 </div>
                 <span className="src-status">Indexed</span>
                 <a href={`${API}/source/${s.source_id}/file`} target="_blank" rel="noreferrer" className="src-dl" title="Open"><ArrowUpRight size={14}/></a>
-                <button className="src-dl" style={{ color: 'var(--red)', background: 'none', border: 'none', cursor: 'pointer', marginLeft: 8 }} onClick={() => handleDelete(s.source_id)} title="Delete"><Trash2 size={14}/></button>
               </div>
             );
           })}

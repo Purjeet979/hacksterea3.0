@@ -1,0 +1,506 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>DocLink — Document Intelligence with Provenance</title>
+<meta name="description" content="DocLink extracts claims with provenance, detects contradictions across document versions, and says 'insufficient evidence' instead of fabricating answers.">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Instrument+Serif:ital@0;1&display=swap" rel="stylesheet">
+<style>
+*, *::before, *::after { margin: 0; padding: 0; box-sizing: border-box; }
+
+:root {
+  --fg: #0f172a;
+  --fg-secondary: #475569;
+  --bg: #f8fafc;
+  --bg-alt: #f1f5f9;
+  --accent: #2563eb;
+  --accent-hover: #1d4ed8;
+  --accent-muted: rgba(37, 99, 235, 0.08);
+  --rule: #cbd5e1;
+  --nav-bg: rgba(248, 250, 252, 0.92);
+  --screenshot-bg: #fff;
+  --mono: "SF Mono", "Cascadia Code", "Fira Code", "Consolas", monospace;
+  --serif: "Instrument Serif", Georgia, "Times New Roman", serif;
+  --sans: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+}
+
+[data-theme="dark"] {
+  --fg: #f8fafc;
+  --fg-secondary: #94a3b8;
+  --bg: #0f172a;
+  --bg-alt: #1e293b;
+  --accent: #60a5fa;
+  --accent-hover: #3b82f6;
+  --accent-muted: rgba(96, 165, 250, 0.15);
+  --rule: #334155;
+  --nav-bg: rgba(15, 23, 42, 0.92);
+  --screenshot-bg: #1e293b;
+}
+
+html { font-size: 18px; scroll-behavior: smooth; }
+body { font-family: var(--sans); color: var(--fg); background: var(--bg); line-height: 1.6; -webkit-font-smoothing: antialiased; }
+
+.container { max-width: 920px; margin: 0 auto; padding: 0 32px; }
+
+/* ── NAV ── */
+nav { position: fixed; top: 0; left: 0; right: 0; z-index: 100; background: var(--nav-bg); backdrop-filter: blur(6px); border-bottom: 1px solid var(--rule); }
+nav .container { display: flex; align-items: center; justify-content: space-between; height: 56px; }
+nav .nav-logo { height: 32px; width: auto; }
+.nav-right { display: flex; align-items: center; gap: 24px; }
+nav .nav-link { font-size: 0.78rem; color: var(--fg-secondary); text-decoration: none; letter-spacing: 0.04em; text-transform: uppercase; transition: color 180ms; }
+nav .nav-link:hover { color: var(--fg); }
+.nav-signin { font-size: 0.78rem; padding: 7px 18px; background: var(--accent); color: #fff; border: none; border-radius: 4px; cursor: pointer; letter-spacing: 0.03em; transition: background 180ms; }
+.nav-signin:hover { background: var(--accent-hover); }
+.nav-user { display: flex; align-items: center; gap: 10px; }
+.nav-user img { width: 28px; height: 28px; border-radius: 50%; }
+.nav-user-name { font-size: 0.78rem; color: var(--fg-secondary); }
+.nav-signout { font-size: 0.7rem; color: var(--fg-secondary); text-decoration: underline; cursor: pointer; background: none; border: none; }
+.theme-btn { background: none; border: none; color: var(--fg-secondary); cursor: pointer; font-size: 1.1rem; }
+
+/* ── REVEAL ── */
+.reveal { opacity: 0; transform: translateY(28px); transition: opacity 260ms ease-out, transform 260ms ease-out; }
+.reveal.visible { opacity: 1; transform: translateY(0); }
+
+/* ── HERO ── */
+.hero { padding: 160px 0 100px; }
+.hero-eyebrow { font-size: 0.72rem; letter-spacing: 0.12em; text-transform: uppercase; color: var(--accent); margin-bottom: 20px; }
+.hero h1 { font-family: var(--serif); font-size: clamp(2.6rem, 6vw, 4rem); line-height: 1.08; letter-spacing: -0.025em; font-weight: 400; margin-bottom: 28px; max-width: 780px; }
+.hero h1 em { font-style: italic; color: var(--accent); }
+.hero-sub { font-size: 1.05rem; color: var(--fg-secondary); line-height: 1.65; max-width: 560px; margin-bottom: 44px; }
+.hero-cta { display: inline-block; font-size: 0.82rem; letter-spacing: 0.06em; text-transform: uppercase; padding: 14px 32px; background: var(--accent); color: #fff; text-decoration: none; border-radius: 4px; transition: background 200ms; border: none; cursor: pointer; }
+.hero-cta:hover { background: var(--accent-hover); }
+
+/* ── SCREENSHOT MOCKUP ── */
+.screenshot-frame { margin: 80px 0 0; background: var(--bg-alt); border: 1px solid var(--rule); padding: 20px; }
+.mock-bar { display: flex; gap: 6px; margin-bottom: 16px; }
+.mock-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--rule); }
+.screenshot-inner { background: var(--screenshot-bg); border: 1px solid var(--rule); padding: 28px 32px; font-size: 0.82rem; line-height: 1.7; }
+.claim-row { display: flex; gap: 16px; align-items: flex-start; padding: 14px 0; border-bottom: 1px solid var(--rule); }
+.claim-row:last-child { border-bottom: none; }
+.claim-badge { font-family: var(--mono); font-size: 0.65rem; padding: 3px 8px; letter-spacing: 0.05em; text-transform: uppercase; white-space: nowrap; flex-shrink: 0; margin-top: 2px; border-radius: 2px; }
+.badge-verified { background: rgba(22, 163, 74, 0.1); color: #16a34a; }
+.badge-superseded { background: var(--accent-muted); color: var(--accent); }
+.claim-text { color: var(--fg); }
+.claim-source { display: block; font-size: 0.72rem; color: var(--fg-secondary); margin-top: 4px; font-family: var(--mono); }
+
+/* ── SECTION DIVIDER ── */
+.section-rule { border: none; border-top: 1px solid var(--rule); margin: 0; }
+
+/* ── CAPABILITY SECTIONS ── */
+.capability { padding: 120px 0; }
+.cap-eyebrow { font-size: 0.68rem; letter-spacing: 0.14em; text-transform: uppercase; color: var(--accent); margin-bottom: 14px; }
+.cap-heading { font-family: var(--serif); font-size: clamp(1.8rem, 4vw, 2.6rem); line-height: 1.12; letter-spacing: -0.02em; font-weight: 400; margin-bottom: 24px; max-width: 640px; }
+.cap-body { font-size: 0.95rem; color: var(--fg-secondary); line-height: 1.7; max-width: 540px; margin-bottom: 40px; }
+
+/* ── CONTRADICTION TABLE ── */
+.contradiction-table { width: 100%; border-collapse: collapse; font-size: 0.82rem; }
+.contradiction-table th { text-align: left; font-family: var(--mono); font-size: 0.68rem; letter-spacing: 0.08em; text-transform: uppercase; color: var(--fg-secondary); padding: 10px 16px; border-bottom: 2px solid var(--fg); }
+.contradiction-table td { padding: 14px 16px; border-bottom: 1px solid var(--rule); vertical-align: top; }
+.contradiction-table tr:last-child td { border-bottom: none; }
+.td-status { font-family: var(--mono); font-size: 0.72rem; }
+.status-current { color: #16a34a; }
+.status-superseded { color: var(--accent); text-decoration: line-through; }
+.td-source { font-family: var(--mono); font-size: 0.72rem; color: var(--fg-secondary); }
+
+/* ── JSON BLOCK ── */
+.json-block { background: #0f172a; color: #94a3b8; padding: 28px 32px; font-family: var(--mono); font-size: 0.76rem; line-height: 1.9; overflow-x: auto; white-space: pre; border-radius: 4px; }
+.json-key { color: #94a3b8; }
+.json-str { color: #60a5fa; }
+.json-bool { color: #f87171; }
+.json-null { color: #64748b; }
+
+/* ── PIPELINE ── */
+.pipeline { display: flex; align-items: center; gap: 0; flex-wrap: wrap; justify-content: center; margin: 40px 0; }
+.pipeline-step { text-align: center; padding: 18px 24px; }
+.pipeline-label { font-family: var(--mono); font-size: 0.7rem; letter-spacing: 0.06em; text-transform: uppercase; color: var(--fg); margin-bottom: 6px; }
+.pipeline-desc { font-size: 0.72rem; color: var(--fg-secondary); max-width: 140px; margin: 0 auto; }
+.pipeline-arrow { font-size: 1.2rem; color: var(--rule); padding: 0 4px; line-height: 1; }
+.pipeline-gate .pipeline-label { color: var(--accent); }
+
+/* ── CTA ── */
+.cta-section { padding: 120px 0 140px; text-align: center; }
+.cta-section h2 { font-family: var(--serif); font-size: clamp(2rem, 4vw, 2.8rem); line-height: 1.12; letter-spacing: -0.02em; font-weight: 400; margin-bottom: 18px; }
+.cta-section p { font-size: 0.95rem; color: var(--fg-secondary); margin-bottom: 36px; max-width: 420px; margin-left: auto; margin-right: auto; }
+
+/* ── FOOTER ── */
+footer { border-top: 1px solid var(--rule); padding: 32px 0; }
+footer .container { display: flex; justify-content: space-between; align-items: center; font-size: 0.72rem; color: var(--fg-secondary); }
+footer img { height: 20px; opacity: 0.5; }
+
+/* ── SVG PATH ANIMATION ── */
+#scroll-line {
+  position: absolute;
+  top: 0; /* Start from top instead of 100vh */
+  left: 50%;
+  transform: translateX(-50%);
+  width: 100%;
+  max-width: 900px; /* Cover wide area for curves */
+  height: 3800px; /* Stretch across entire page height */
+  z-index: -1; /* Behind components */
+  pointer-events: none;
+}
+#scroll-path {
+  fill: none;
+  stroke: var(--accent);
+  stroke-width: 4; /* Thicker line */
+  opacity: 0.7; /* Much darker and more visible */
+  filter: drop-shadow(0 0 6px var(--accent)); /* Add a nice glow */
+  stroke-dasharray: 6000;
+  stroke-dashoffset: 6000;
+}
+
+/* ── RESPONSIVE ── */
+@media (max-width: 640px) {
+  html { font-size: 16px; }
+  .container { padding: 0 20px; }
+  .hero { padding: 120px 0 60px; }
+  .capability { padding: 80px 0; }
+  .pipeline { flex-direction: column; }
+  .pipeline-arrow { transform: rotate(90deg); }
+  .contradiction-table { font-size: 0.75rem; }
+  .contradiction-table th, .contradiction-table td { padding: 10px 8px; }
+  nav .container { padding: 0 16px; }
+  .nav-user-name { display: none; }
+}
+</style>
+</head>
+<body style="position: relative;">
+
+<!-- BACKGROUND SCROLL LINE -->
+<svg id="scroll-line" viewBox="0 0 900 3800" preserveAspectRatio="xMidYMin slice">
+  <path id="scroll-path" d="M 450 0 
+           C 450 300, 150 400, 150 700 
+           C 150 1000, 750 1100, 750 1500 
+           C 750 1900, 150 2000, 150 2400 
+           C 150 2800, 750 2900, 750 3300 
+           C 750 3600, 450 3700, 450 3800" />
+</svg>
+
+<!-- MOUSE GLOW -->
+<div id="mouse-glow" style="
+  position: fixed;
+  top: 0; left: 0;
+  width: 400px; height: 400px;
+  background: radial-gradient(circle, var(--accent-muted) 0%, transparent 70%);
+  border-radius: 50%;
+  pointer-events: none;
+  transform: translate(-50%, -50%);
+  z-index: 9999;
+  opacity: 0;
+  transition: opacity 0.3s;
+  mix-blend-mode: screen;
+"></div>
+
+<!-- NAV -->
+<nav>
+  <div class="container">
+    <img src="/logo-wide.png" alt="DocLink" class="nav-logo">
+    <div class="nav-right">
+      <button class="theme-btn" id="theme-btn">☀️</button>
+      <a href="#architecture" class="nav-link">How it works</a>
+      <div id="auth-area">
+        <button class="nav-signin" id="signin-btn" onclick="doLogin()">Sign in with Google</button>
+      </div>
+    </div>
+  </div>
+</nav>
+
+<!-- HERO -->
+<section class="hero">
+  <div class="container">
+    <div class="reveal">
+      <div class="hero-eyebrow">Document Intelligence</div>
+      <h1>Every answer traces back to <em>a claim in a document.</em></h1>
+      <p class="hero-sub">
+        DocLink extracts verifiable claims with page-level provenance, detects contradictions across document versions, and refuses to answer when evidence is insufficient.
+      </p>
+      <button class="hero-cta" id="hero-cta" onclick="doLogin()">Get Started</button>
+    </div>
+
+    <div class="screenshot-frame reveal">
+      <div class="mock-bar"><div class="mock-dot"></div><div class="mock-dot"></div><div class="mock-dot"></div></div>
+      <div class="screenshot-inner">
+        <div class="claim-row">
+          <span class="claim-badge badge-verified">Verified</span>
+          <div>
+            <span class="claim-text">Classification accuracy reached 99.4% on the held-out evaluation set.</span>
+            <span class="claim-source">project_report.pdf · p.2 · §2024 Development Results</span>
+          </div>
+        </div>
+        <div class="claim-row">
+          <span class="claim-badge badge-verified">Verified</span>
+          <div>
+            <span class="claim-text">Budget utilisation for the 2024 financial year closed at 87% of the allocated amount.</span>
+            <span class="claim-source">project_report.pdf · p.3 · §Budget and Resourcing</span>
+          </div>
+        </div>
+        <div class="claim-row">
+          <span class="claim-badge badge-superseded">Superseded</span>
+          <div>
+            <span class="claim-text">Estimated project cost: ₹25,000 (initial draft estimate, April 2024).</span>
+            <span class="claim-source">vendor_quote_v1.pdf · p.1</span>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<hr class="section-rule">
+
+<!-- CONTRADICTION DETECTION -->
+<section class="capability">
+  <div class="container">
+    <div class="reveal">
+      <div class="cap-eyebrow">Contradiction Detection</div>
+      <h2 class="cap-heading">Three documents, three prices. DocLink resolves by version date.</h2>
+      <p class="cap-body">
+        When the same claim appears in multiple document versions with conflicting values, DocLink identifies the conflict, timestamps each version, and marks older claims as superseded.
+      </p>
+    </div>
+
+    <div class="screenshot-frame reveal">
+      <div class="mock-bar"><div class="mock-dot"></div><div class="mock-dot"></div><div class="mock-dot"></div></div>
+      <table class="contradiction-table">
+        <thead>
+          <tr><th>Claim</th><th>Source</th><th>Date</th><th>Status</th></tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td>Estimated project cost: ₹25,000</td>
+            <td class="td-source">vendor_quote_v1.pdf</td>
+            <td class="td-source">Apr 2024</td>
+            <td class="td-status status-superseded">Superseded</td>
+          </tr>
+          <tr>
+            <td>Revised estimate: ₹50,000 (scope change)</td>
+            <td class="td-source">vendor_quote_v2.pdf</td>
+            <td class="td-source">Jun 2024</td>
+            <td class="td-status status-superseded">Superseded</td>
+          </tr>
+          <tr>
+            <td>Final contracted amount: ₹75,000</td>
+            <td class="td-source">signed_contract.pdf</td>
+            <td class="td-source">Aug 2024</td>
+            <td class="td-status status-current">Current</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+</section>
+
+<hr class="section-rule">
+
+<!-- INSUFFICIENT EVIDENCE -->
+<section class="capability">
+  <div class="container">
+    <div class="reveal">
+      <div class="cap-eyebrow">Honest Restraint</div>
+      <h2 class="cap-heading">When evidence is insufficient, DocLink says so.</h2>
+      <p class="cap-body">
+        Most RAG systems fabricate plausible-sounding answers from thin context. DocLink measures retrieval confidence against an explicit threshold and abstains rather than hallucinate.
+      </p>
+    </div>
+
+    <div class="reveal">
+      <div class="json-block">{
+  <span class="json-key">"answer"</span>: <span class="json-str">"I could not find sufficient evidence in the available sources to answer this question."</span>,
+  <span class="json-key">"abstained"</span>: <span class="json-bool">true</span>,
+  <span class="json-key">"confidence"</span>: <span class="json-null">null</span>,
+  <span class="json-key">"error_code"</span>: <span class="json-str">"INSUFFICIENT_EVIDENCE"</span>,
+  <span class="json-key">"citations"</span>: [],
+  <span class="json-key">"retrieved_items"</span>: []
+}</div>
+    </div>
+  </div>
+</section>
+
+<hr class="section-rule">
+
+<!-- ARCHITECTURE -->
+<section class="capability" id="architecture">
+  <div class="container">
+    <div class="reveal">
+      <div class="cap-eyebrow">Architecture</div>
+      <h2 class="cap-heading">A linear pipeline with a gate before generation.</h2>
+      <p class="cap-body">
+        Every query passes through retrieval, cross-encoder reranking, and an explicit abstention gate before the language model is invoked. Citations are programmatic, not generated.
+      </p>
+    </div>
+
+    <div class="pipeline reveal">
+      <div class="pipeline-step">
+        <div class="pipeline-label">Ingest</div>
+        <div class="pipeline-desc">PDF, DOCX, images, audio. Extract + chunk.</div>
+      </div>
+      <div class="pipeline-arrow">→</div>
+      <div class="pipeline-step">
+        <div class="pipeline-label">Embed</div>
+        <div class="pipeline-desc">384-d vectors. FAISS exact search.</div>
+      </div>
+      <div class="pipeline-arrow">→</div>
+      <div class="pipeline-step">
+        <div class="pipeline-label">Rerank</div>
+        <div class="pipeline-desc">Cross-encoder scoring. Top-K filter.</div>
+      </div>
+      <div class="pipeline-arrow">→</div>
+      <div class="pipeline-step pipeline-gate">
+        <div class="pipeline-label">Gate</div>
+        <div class="pipeline-desc">Abstain if score &lt; threshold. No hallucination.</div>
+      </div>
+      <div class="pipeline-arrow">→</div>
+      <div class="pipeline-step">
+        <div class="pipeline-label">Generate</div>
+        <div class="pipeline-desc">Grounded answer. Programmatic citations.</div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<hr class="section-rule">
+
+<!-- CTA -->
+<section class="cta-section" id="start">
+  <div class="container reveal">
+    <h2>Upload a document. Ask a question. See the evidence.</h2>
+    <p>DocLink runs locally or with any OpenAI-compatible API. No data leaves your machine unless you choose it.</p>
+    <button class="hero-cta" onclick="doLogin()">Open DocLink</button>
+  </div>
+</section>
+
+<!-- FOOTER -->
+<footer>
+  <div class="container">
+    <img src="/logo-wide.png" alt="DocLink">
+    <span>© 2024 DocLink</span>
+  </div>
+</footer>
+
+<!-- Firebase SDK (compat for simplicity) -->
+<script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-auth-compat.js"></script>
+<script>
+firebase.initializeApp({
+  apiKey: "AIzaSyDvu7vArO7S8hUrr4V9VUxJ1n692U3HfX4",
+  authDomain: "snehsaathi-hackathon.firebaseapp.com",
+  projectId: "snehsaathi-hackathon",
+  storageBucket: "snehsaathi-hackathon.firebasestorage.app",
+  messagingSenderId: "22059620360",
+  appId: "1:22059620360:web:8375621b9b4a0fc1cc19bd"
+});
+
+const authArea = document.getElementById('auth-area');
+const heroCta = document.getElementById('hero-cta');
+
+firebase.auth().onAuthStateChanged(user => {
+  if (user) {
+    authArea.innerHTML = `
+      <div class="nav-user">
+        <img src="${user.photoURL || ''}" alt="">
+        <span class="nav-user-name">${user.displayName || 'User'}</span>
+        <button class="nav-signout" onclick="firebase.auth().signOut()">Sign out</button>
+      </div>`;
+    heroCta.textContent = 'Open DocLink';
+    heroCta.onclick = () => window.location.href = '/';
+    // Update all CTA buttons
+    document.querySelectorAll('.hero-cta').forEach(btn => {
+      btn.textContent = 'Open DocLink';
+      btn.onclick = () => window.location.href = '/';
+    });
+  }
+});
+
+function doLogin() {
+  const provider = new firebase.auth.GoogleAuthProvider();
+  firebase.auth().signInWithPopup(provider).then(() => {
+    window.location.href = '/';
+  }).catch(err => {
+    if (err.code !== 'auth/popup-closed-by-user') alert(err.message);
+  });
+}
+
+// Scroll-driven SVG path animation
+const scrollPath = document.getElementById('scroll-path');
+if (scrollPath) {
+  const pathLength = scrollPath.getTotalLength();
+  scrollPath.style.strokeDasharray = pathLength + ' ' + pathLength;
+  scrollPath.style.strokeDashoffset = pathLength;
+
+  const updateScroll = () => {
+    // Calculate scroll percentage
+    const maxScroll = document.body.scrollHeight - window.innerHeight;
+    const scrollPercentage = Math.min(Math.max(window.scrollY / maxScroll, 0), 1);
+    // Draw line based on scroll
+    const drawLength = pathLength * scrollPercentage;
+    scrollPath.style.strokeDashoffset = pathLength - drawLength;
+  };
+
+  let ticking = false;
+  window.addEventListener('scroll', () => {
+    if (!ticking) {
+      window.requestAnimationFrame(() => {
+        updateScroll();
+        ticking = false;
+      });
+      ticking = true;
+    }
+  });
+  // Initial call
+  updateScroll();
+}
+
+// Theme toggle
+const themeBtn = document.getElementById('theme-btn');
+const savedTheme = localStorage.getItem('dl_theme') || 'dark';
+document.documentElement.setAttribute('data-theme', savedTheme);
+themeBtn.textContent = savedTheme === 'dark' ? '☀️' : '🌙';
+
+// Mouse Glow
+const glow = document.getElementById('mouse-glow');
+let isGlowVisible = false;
+let mouseTicking = false;
+
+document.addEventListener('mousemove', (e) => {
+  if (!isGlowVisible) {
+    glow.style.opacity = '1';
+    isGlowVisible = true;
+  }
+  if (!mouseTicking) {
+    window.requestAnimationFrame(() => {
+      glow.style.transform = `translate(calc(${e.clientX}px - 50%), calc(${e.clientY}px - 50%))`;
+      mouseTicking = false;
+    });
+    mouseTicking = true;
+  }
+});
+
+document.addEventListener('mouseleave', () => {
+  glow.style.opacity = '0';
+  isGlowVisible = false;
+});
+
+themeBtn.onclick = () => {
+  const current = document.documentElement.getAttribute('data-theme');
+  const next = current === 'dark' ? 'light' : 'dark';
+  document.documentElement.setAttribute('data-theme', next);
+  localStorage.setItem('dl_theme', next);
+  themeBtn.textContent = next === 'dark' ? '☀️' : '🌙';
+};
+
+// Scroll reveals
+const observer = new IntersectionObserver(entries => {
+  entries.forEach(entry => {
+    if (entry.isIntersecting) {
+      entry.target.classList.add('visible');
+      observer.unobserve(entry.target);
+    }
+  });
+}, { threshold: 0.12 });
+document.querySelectorAll('.reveal').forEach(el => observer.observe(el));
+</script>
+
+</body>
+</html>

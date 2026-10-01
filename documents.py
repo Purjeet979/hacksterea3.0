@@ -287,6 +287,25 @@ def _extract_pdf_standard(path: Path, warnings: list[str]) -> list[Extracted]:
                 ocr_text = _ocr_pdf_page(page, warnings, page_index)
                 if len(ocr_text) > len(text):
                     text, ocr_used = ocr_text, True
+            else:
+                # If page has text but also has images, OCR those images specifically
+                image_list = page.get_images(full=True)
+                for img in image_list:
+                    try:
+                        xref = img[0]
+                        pix = pymupdf.Pixmap(doc, xref)
+                        if pix.n - pix.alpha > 3:
+                            pix = pymupdf.Pixmap(pymupdf.csRGB, pix)
+                        import io
+                        from PIL import Image
+                        import pytesseract
+                        pytesseract.pytesseract.tesseract_cmd = settings.tesseract_cmd
+                        img_pil = Image.open(io.BytesIO(pix.tobytes("png")))
+                        img_text = pytesseract.image_to_string(img_pil).strip()
+                        if img_text:
+                            text += f"\n\n[Image Text]: {img_text}"
+                    except Exception as e:
+                        pass
 
             if not text:
                 continue
@@ -307,31 +326,8 @@ def _extract_pdf_standard(path: Path, warnings: list[str]) -> list[Extracted]:
 
 def _extract_pdf(path: Path, warnings: list[str]) -> list[Extracted]:
     """Classify PDF and route:
-    - Clean digital text -> fast direct extraction
-    - Has images / scanned / tables -> Docling deep layout, image & table parsing
+    - Use fast PyMuPDF extraction for maximum speed
     """
-    try:
-        info = classify_pdf(path)
-        logger.info(
-            "PDF classification for %s: %s (images: %d, scanned: %s, tables: %s)",
-            path.name, info["category"], info["image_count"], info["is_scanned"], info["has_tables"],
-        )
-
-        if info["has_images"] or info["is_scanned"] or info["has_tables"]:
-            try:
-                docling_out = _extract_with_docling(path, warnings, info)
-                if docling_out:
-                    warnings.append(
-                        f"Docling processed {path.name}: extracted {len(docling_out)} chunks "
-                        f"across {info['pages']} pages ({info['image_count']} images, category: {info['category']})."
-                    )
-                    return docling_out
-            except Exception as exc:
-                warnings.append(f"Docling parsing failed ({exc}); falling back to standard extractor.")
-                logger.warning("Docling failed for %s: %s; falling back", path.name, exc)
-    except Exception as exc:
-        logger.warning("PDF classification error for %s: %s", path.name, exc)
-
     return _extract_pdf_standard(path, warnings)
 
 

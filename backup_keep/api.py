@@ -34,41 +34,52 @@ from schemas import (
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-from fastapi import Request, Depends, HTTPException
-import firebase_admin
-from firebase_admin import credentials, auth
-from rag_pipeline import current_user_id
-
-try:
-    cred = credentials.Certificate("snehsaathi-hackathon-firebase-adminsdk-fbsvc-5e9b5bd0a6.json")
-    firebase_admin.initialize_app(cred)
-except ValueError:
-    pass
-
-async def verify_firebase_token(request: Request):
-    if request.method == "OPTIONS":
-        return
-    if request.url.path in ["/docs", "/openapi.json", "/health"] or request.url.path.endswith("/file"):
-        return
-    auth_header = request.headers.get("Authorization")
-    if not auth_header or not auth_header.startswith("Bearer "):
-        raise HTTPException(status_code=401, detail="Missing or invalid Authorization header")
-    try:
-        token = auth_header.split(" ")[1]
-        decoded = auth.verify_id_token(token)
-        current_user_id.set(decoded["uid"])
-    except Exception as e:
-        raise HTTPException(status_code=401, detail=f"Token verification failed: {str(e)}")
-
 app = FastAPI(
     title="DocLink",
     description="Multimodal RAG over documents, images and audio with provenance.",
     version="1.0.0",
-    dependencies=[Depends(verify_firebase_token)]
 )
+
+import firebase_admin
+from firebase_admin import credentials, auth
+from rag_pipeline import current_user_id
+from fastapi import Request
+from fastapi.responses import JSONResponse
+
+# Initialize Firebase Admin using the provided service account
+try:
+    cred = credentials.Certificate("snehsaathi-hackathon-firebase-adminsdk-fbsvc-5bd6ae4384.json")
+    firebase_admin.initialize_app(cred)
+except ValueError:
+    pass  # Already initialized
+
+@app.middleware("http")
+async def firebase_auth_middleware(request: Request, call_next):
+    if request.method == "OPTIONS":
+        return await call_next(request)
+        
+    # Allow local frontend to load index.html without auth? Wait, it's an API, so no HTML.
+    # Allow docs and file serving (so img/audio tags work without fetch rewriting)
+    if request.url.path in ["/docs", "/openapi.json"] or request.url.path.endswith("/file"):
+        return await call_next(request)
+        
+    auth_header = request.headers.get("Authorization")
+    if not auth_header or not auth_header.startswith("Bearer "):
+        return JSONResponse(status_code=401, content={"detail": "Missing or invalid Authorization header"})
+        
+    try:
+        token = auth_header.split(" ")[1]
+        decoded = auth.verify_id_token(token)
+        # Isolate the data per user
+        current_user_id.set(decoded["uid"])
+    except Exception as e:
+        return JSONResponse(status_code=401, content={"detail": f"Token verification failed: {str(e)}"})
+        
+    return await call_next(request)
 
 app.add_middleware(
     CORSMiddleware,
+    # Local dev frontend, plus your deployed Vercel URL once you have one.
     allow_origins=[
         "http://localhost:5173",
         "http://127.0.0.1:5173",
@@ -160,31 +171,17 @@ async def ingest(files: list[UploadFile] = File(...)) -> dict:
 
 @app.post("/query")
 def query(request: QueryRequest, backend: str | None = None) -> dict:
-    from rag_pipeline import last_technical_detail
-    from config import settings
-    import os
+    """Text query against the index.
 
-    import re
-    q_lower = request.query.lower()
-    math_keywords = {"average", "mean", "sum", "calculate", "count", "plot", "how many", "total", "max", "min"}
-    q_words = set(re.findall(r'\b\w+\b', q_lower))
-    if any(k in q_words for k in math_keywords) or "how many" in q_lower:
-        if settings.documents_dir.exists():
-            csv_files = [str(settings.documents_dir / f) for f in os.listdir(settings.documents_dir) if f.endswith(".csv")]
-            if csv_files:
-                from code_interpreter import run_code_interpreter
-                answer = run_code_interpreter(request.query, csv_files)
-                return {
-                    "answer": answer,
-                    "retrieved_items": [],
-                    "relationships": [],
-                    "abstained": False,
-                    "confidence": 1.0,
-                    "error_code": None,
-                    "query_representation": request.query,
-                    "latency_ms": {},
-                    "technical_detail": None,
-                }
+    `backend` ("offline" | "online") selects the inference provider and
+    defaults to settings.inference_backend. It is a query parameter rather
+    than a QueryRequest field so the locked schemas.py contract is unchanged.
+
+    The response is the QueryResponse contract plus a sibling
+    `technical_detail` string, which carries provider error detail for a
+    "Technical details" view without altering QueryResponse itself.
+    """
+    from rag_pipeline import last_technical_detail
 
     response = get_pipeline().query(request, backend=backend)
     return {

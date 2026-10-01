@@ -104,7 +104,7 @@ application needs no internet at all.
                                |
                     +----------+----------+
                     |                     |
-               Streamlit UI          FastAPI
+         React / Streamlit UI        FastAPI
 ```
 
 **One core, two front ends.** `app.py` and `api.py` both call `rag_pipeline.py`
@@ -149,7 +149,7 @@ AUDIO                   ->  timestamped transcript window  ->  MiniLM  ->  FAISS
 | DOC | LibreOffice headless → DOCX | — |
 | CSV | pandas | — |
 | API | FastAPI + Uvicorn | — |
-| UI | Streamlit | — |
+| UI | React / Streamlit | — |
 
 **Why PyTorch is pinned to CPU:** on a 4 GB GPU, Ollama already uses ~2.8 GB for
 Qwen. Loading MiniLM, the cross-encoder and Whisper onto CUDA would evict Qwen
@@ -530,7 +530,7 @@ guard and the real network will then be down.
 
 ## Persistence
 
-FAISS writes to `index/faiss.index`, SQLite to `index/store.db`, on every ingest.
+FAISS writes to `index/faiss_{uid}.index`, SQLite to `data/store_{uid}.db`, on every ingest, keeping user data isolated.
 
 ```powershell
 .venv\Scripts\python.exe scripts\ingest_demo.py   # ingest

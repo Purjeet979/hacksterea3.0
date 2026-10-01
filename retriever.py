@@ -91,13 +91,15 @@ class Retriever:
             "the document", "this document", "the pdf", "this pdf",
             "the docx", "this docx", "the doc", "this doc",
             "the file", "this file", "the report", "this report",
+            "the image", "this image", "the picture", "this picture",
             "what was the document", "what is the document", "what does the document",
             "what was the pdf", "what is the pdf", "what does the pdf",
             "what was the docx", "what is the docx", "what does the docx",
             "what is in the pdf", "what is in the docx", "what is in the document",
-            "in the pdf", "in the docx", "in the document",
+            "what is in the image", "about the image",
+            "in the pdf", "in the docx", "in the document", "in the image",
             "about the pdf", "about the docx", "about the document",
-            "summarize", "summary", "overview", "what is this about", "explain the"
+            "summarize", "summarise", "summary", "overview", "what is this about", "explain the", "explain this"
         ])
         if not matched_source_ids and is_generic_doc_query and len(sources) <= 4:
             for s in sources:
